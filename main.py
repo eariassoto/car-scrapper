@@ -7,7 +7,10 @@ from requests import post, get
 from lxml import html
 from re import search, sub, findall
 from bs4 import BeautifulSoup
-from datetime import date
+from datetime import datetime
+from db import insert_car, car_exists
+from sys import stdout
+from car_record import CarRecord
 
 # api-endpoint
 URL = "http://crautos.com/rautosusados/searchresults.cfm"
@@ -163,7 +166,7 @@ def parse_car_date(value_column):
   for m in months:
     if m in value:
       month = months[m]
-  return date(int(numbers[1]), month, int(numbers[0]))
+  return datetime(int(numbers[1]), month, int(numbers[0]))
 
 
 def parse_car_engine_displacement(value_column):
@@ -232,34 +235,7 @@ def parse_car_attributes_from_rows(rows):
   return car_attributes_map
 
 
-class CarRecord:
-    id = 0
-    title = ''
-    link = ''
-    attributes = {}
-    equipment = []
-    images = []
-
-    def __init__(self, id, title, link, attributes, equipment, images):
-      self.id = id
-      self.link = link
-      self.title = title
-      self.attributes = attributes
-      self.equipment = equipment
-      self.images = images
-
-    def Print(self):
-      print('Title: ' + self.title)
-      print('Id: ' + str(self.id))
-      print('Link: ' + self.link)
-      print('Attributes: ' + str(self.attributes))
-      print('Equipment: ' + str(self.equipment))
-      print('Images: ' + str(self.images))
-
-
 def scrap_car_data(link):
-  print("Scraping data from: " + link)
-
   id = get_car_id_from_link(link)
 
   car_details_page = get(url=link, headers=headers)
@@ -272,6 +248,7 @@ def scrap_car_data(link):
   car_imgs = parse_car_images_from_rows(details_table_rows)
 
   car = CarRecord(id, car_title, link, car_attributes_map, car_equipment_list, car_imgs)
+  insert_car(car)
   return car
 
 
@@ -280,10 +257,18 @@ seach_results_page = post(url=URL, data=make_request_payload(500), headers=heade
 seach_results_body = BeautifulSoup(seach_results_page.text, 'html.parser')
 total_pages = get_last_page_from_body(seach_results_body)
 
-print("Total pages found: " + total_pages)
-
+stdout.write("Total pages found: {}\n".format(total_pages))
+stdout.flush()
 car_links = get_car_links_from_body(seach_results_body)
 
-for link in car_links:
+car_links_len = len(car_links)
+for i, link in enumerate(car_links):
+  stdout.write("\rPage 500: Scraping data from car {} out of {}"\
+    .format(i+1, car_links_len))
+  stdout.flush()
+  id = get_car_id_from_link(link)
+  if car_exists(id):
+    continue
   car = scrap_car_data(link)
-  car.Print()
+  #car.Print()
+stdout.write("\nDone scrapping\n")
